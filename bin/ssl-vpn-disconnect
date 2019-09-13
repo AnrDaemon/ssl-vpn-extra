@@ -1,0 +1,10 @@
+#!/bin/sh
+
+_id=$( id -u "$SUDO_USER" )
+PID="$( readlink -f "/run/user/${_id:-<none>}/ssl-vpn.pid" )"
+
+[ "$PID" -a -f "$PID" ] || exit 1
+
+PID="$( cat "$PID" )"
+
+kill -0 "$PID" && kill -HUP "$PID"

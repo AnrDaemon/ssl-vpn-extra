@@ -1,0 +1,4 @@
+#!/bin/sh
+
+eval "$( openconnect --authenticate "--user=${2:-${SSL_VPN_USER:-$USER}}" -- "${1:-$SSL_VPN_HOST}" )"
+. "$( dirname "$( readlink -f "$0" )" )/ssl-vpn-connect-wrapper"
