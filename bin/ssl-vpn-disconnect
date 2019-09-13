@@ -1,6 +1,6 @@
 #!/bin/sh
 
-_id=$( id -u "$SUDO_USER" )
+_id=$( id -u )
 PID="$( readlink -f "/run/user/${_id:-<none>}/ssl-vpn.pid" )"
 
 [ "$PID" -a -f "$PID" ] || exit 1
