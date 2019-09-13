@@ -1,0 +1,7 @@
+run_hooks attempt-reconnect
+run_hooks connect
+run_hooks disconnect
+run_hooks post-connect
+run_hooks post-disconnect
+run_hooks pre-init
+run_hooks reconnect
