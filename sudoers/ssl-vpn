@@ -1,0 +1,5 @@
+# Check membership in the `ssl-vpn' group to launch
+# OpenConnect wrapper to actually establish a connection
+#
+# <User> <host> = ( <asuser>:<asgroup> ) <tags>: <command> <args>
+%ssl-vpn ALL = ( root ) SETENV: NOPASSWD: /opt/ssl-vpn-extra/bin/ssl-vpn-connect ""

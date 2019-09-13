@@ -1,0 +1,16 @@
+#!/bin/sh
+
+[ "$COOKIE" -a "$HOST" ] || exit 1
+
+{
+
+    _id=$( id -u "$SUDO_USER" )
+    PID="$( readlink -f "/run/user/${_id:-<none>}/ssl-vpn.pid" )"
+
+    # Establish connection
+    openconnect --background ${PID:+"--pid-file=$PID"} --disable-ipv6 --no-dtls ${FINGERPRINT:+"--servercert=$FINGERPRINT"} "--cookie=$COOKIE" ${_id:+"--setuid=$_id"} -- "$HOST"
+
+} 2>&1 | logger --id=$$ --tag ssl-vpn --skip-empty --
+
+# Chown PID file
+[ "$PID" ] && chgrp ssl-vpn "$PID"

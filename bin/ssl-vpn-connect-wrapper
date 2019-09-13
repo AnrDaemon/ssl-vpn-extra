@@ -1,0 +1,5 @@
+#!/bin/sh
+
+[ "$COOKIE" -a "$HOST" ] || exit 1
+
+sudo --background --set-home "--prompt=[sudo]OpenConnect worker task: " "COOKIE=$COOKIE" "FINGERPRINT=$FINGERPRINT" "HOST=$HOST" -- "$( dirname "$( readlink -f "$0" )" )/ssl-vpn-connect" &
