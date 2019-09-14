@@ -13,9 +13,6 @@ install --verbose -D --mode=0755 "--target-directory=$BASE/bin" -- \
     "$_SRC/bin/ssl-vpn-connect" \
     "$_SRC/bin/ssl-vpn-disconnect"
 
-install --verbose -D --mode=0644 "--target-directory=$BASE/bin" -- \
-    "$_SRC/bin/ssl-vpn-connect-wrapper"
-
 install --verbose -D --mode=0755 "--target-directory=$BASE/hooks" -- \
     "$_SRC/hooks/x5-routes.sh"
 
@@ -43,9 +40,6 @@ visudo -qcf "$BASE/sudoers/ssl-vpn" && install --verbose "--no-target-directory"
 _t="/usr/local/bin/ssl-vpn"
 [ -f "$_t" -a -L "$_t" ] || ln -sT "$BASE/bin/ssl-vpn" "$_t"
 
-_t="/usr/local/bin/ssl-vpn-disconnect"
-[ -f "$_t" -a -L "$_t" ] || ln -sT "$BASE/bin/ssl-vpn-disconnect" "$_t"
-
 _t="$CONF/post-connect.d/x5-routes"
 [ -f "$_t" -a -L "$_t" ] || ln -sT "$BASE/hooks/x5-routes.sh" "$_t"
 
@@ -53,6 +47,6 @@ echo ""
 echo "Installation finished."
 echo ""
 echo "You may now use \`ssl-vpn <host> <user>' to connect."
-echo "Use \`ssl-vpn-disconnect' to stop session."
+echo "Use \`ssl-vpn --kill' to stop session."
 echo ""
 echo "Please see \`hooks/README.hooks.md' for more information."

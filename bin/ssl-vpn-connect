@@ -3,17 +3,26 @@
 [ "$COOKIE" -a "$HOST" ] || exit 1
 
 _id=$( id -u "$SUDO_USER" )
-PID="$( readlink -f "/run/user/${_id:-<none>}/ssl-vpn.pid" )"
+PIDfile="$( readlink -f "/run/user/${_id:-<none>}/ssl-vpn.pid" )"
 
-[ "$PID" ] && {
-    touch "$PID"
-    chgrp ssl-vpn "$PID"
-
-    kill -0 "$( cat "$PID" )" 2> /dev/null && {
-        echo "Already running as PID $( cat "$PID" ) !!"
+[ "$PIDfile" ] && {
+    [ -f "$PIDfile" ] && kill -0 "$( cat "$PIDfile" 2> /dev/null )" 2> /dev/null && {
+        echo "Already running as PID $( cat "$PIDfile" ) !!"
         exit 1
     } >&2
+
+    umask 0027
+    touch "$PIDfile"
+    chgrp ssl-vpn "$PIDfile"
+}
+
+[ -f "/etc/vpnc/vpnc-script" -a -x "/etc/vpnc/vpnc-script" ] && {
+    SCRIPT="/etc/vpnc/vpnc-script"
 }
 
 # Establish connection
-echo "$COOKIE" | openconnect --background --syslog "${PID:+--pid-file=$PID}" --disable-ipv6 --no-dtls "${FINGERPRINT:+--servercert=$FINGERPRINT}" --cookie-on-stdin "${_id:+--setuid=$_id}" -- "$HOST"
+echo "$COOKIE" | openconnect --background --syslog --disable-ipv6 --no-dtls \
+    ${PIDfile:+"--pid-file=$PIDfile"} \
+    ${FINGERPRINT:+"--servercert=$FINGERPRINT"} \
+    ${SCRIPT:+"--script=$SCRIPT"} \
+    --cookie-on-stdin -- "$HOST"

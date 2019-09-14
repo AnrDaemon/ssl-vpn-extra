@@ -1,4 +1,110 @@
 #!/bin/sh
 
-eval "$( openconnect --authenticate "--user=${2:-${SSL_VPN_USER:-$USER}}" -- "${1:-$SSL_VPN_HOST}" )"
-. "$( dirname "$( readlink -f "$0" )" )/ssl-vpn-connect-wrapper"
+test "$( getopt --test )" && {
+    echo "Requires \`enhanced' getopt."
+    exit 4
+} >&2
+
+_get_version()
+{
+    echo "SSL-VPN extras v0.2"
+}
+
+_get_help()
+{
+    _prog="$( basename "$0" )"
+    echo "SSL VPN extras package"
+    echo ""
+    echo "SYNOPSIS"
+    echo "    $_prog [ <HOST> [ <USER> ] ]"
+    echo "    $_prog --help | --version | --kill"
+    echo ""
+    echo "DESCRIPTION"
+    echo "    This package is a wrapper to OpenConnect tool, aiming at making it easier"
+    echo "    to connect from regular user's session."
+    echo "    Any user - member of the \`ssl-vpn' group - will be able to initiate"
+    echo "    connection without the need to answer SUDO password prompt."
+    echo ""
+    echo "OPTIONS"
+    echo "    -k|--kill - terminate running session;"
+    echo "    -V|--version"
+    echo "              - display suite version;"
+    echo "    -H|--help - display this help."
+    echo ""
+    echo "PARAMETERS"
+    echo "    <HOST> - The host URI, usually in the form \`https://vpn.company.org/group',"
+    echo "        defaults to \`\$SSL_VPN_HOST' if not specified."
+    echo "    <USER> - The login user name, defaults to \`\$SSL_VPN_USER' if not specified."
+    echo ""
+    echo "USAGE"
+    echo "    Use \`$_prog [ <HOST> [ <USER> ] ]' to connect."
+    echo "    Use \`$_prog --kill' to stop session."
+    echo ""
+    echo "Please see \`$( dirname "$( dirname "$( readlink -e "$0" )" )" )/hooks/README.hooks.md' for more information."
+}
+
+_clean_value() # $allowedChars $string
+{
+    printf "%s" "$2" | tr -Cd "$1"
+}
+
+eval set -- $( getopt -n "$( basename -- "$0" )" -o '+HkV' -l 'help,kill,version' --shell sh -- "$@" )
+
+_kill=
+for opt; do
+    case "$opt" in
+        -H|--help)
+            _get_help
+            exit 0
+            ;;
+
+        -V|--version)
+            _get_version
+            exit 0
+            ;;
+
+        -k|--kill)
+            _kill=yes
+            shift
+            ;;
+
+        "--")
+            shift
+            break
+            ;;
+
+        *)
+            echo "Unknown option \`$opt'! Terminating!"
+            exit 3
+            ;;
+    esac
+done
+#_domain="$( _clean_value "[:alnum:]-" "$1" | tr '[:lower:]' '[:upper:]' )"
+
+if [ "$_kill" ]; then
+    sudo "--prompt=[sudo]OpenConnect worker task:" \
+        -- "$( dirname "$( readlink -e "$0" )" )/ssl-vpn-disconnect"
+    exit $?
+fi
+
+_host="${1:-$SSL_VPN_HOST}"
+_user="${2:-$SSL_VPN_USER}"
+[ "$_host" -a "$_user" ] || {
+    _get_help
+    echo ""
+    echo "ERROR: Unable to discover <HOST> or <USER>!"
+    exit 2
+} >&2
+
+(
+    eval "$( openconnect --authenticate "--user=$_user" -- "$_host" )"
+    [ "$COOKIE" -a "$HOST" ] || exit 1
+
+    sudo --background "--prompt=[sudo]OpenConnect worker task:" \
+        "COOKIE=$COOKIE" \
+        "FINGERPRINT=$FINGERPRINT" \
+        "HOST=$HOST" \
+        -- "$( dirname "$( readlink -f "$0" )" )/ssl-vpn-connect"
+)
+
+exit $?
