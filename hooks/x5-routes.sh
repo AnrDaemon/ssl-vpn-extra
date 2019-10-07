@@ -7,6 +7,7 @@ ip route replace 192.168.32.0/24 dev $NETDEV
 ip route replace 192.168.129.0/24 dev $NETDEV
 ip route replace 192.168.181.0/24 dev $NETDEV
 ip route replace 192.168.191.0/24 dev $NETDEV
+ip route replace 192.168.238.0/24 dev $NETDEV
 ip route replace 192.168.239.0/24 dev $NETDEV
 
 ip route delete 192.168.0.0/16 dev $NETDEV
