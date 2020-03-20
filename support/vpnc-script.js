@@ -5,6 +5,26 @@
 // needed by vpnc.
 //
 
+// Enables additional functionality (mostly) for debugging purposes
+var vDebug = false;
+
+// Polyfills
+if (!String.prototype.trim) {
+	String.prototype.trim = function () {
+	  return this.replace(/^[\s\uFEFF\xA0]+|[\s\uFEFF\xA0]+$/g, '');
+	};
+}
+if (!String.prototype.trimStart) {
+	String.prototype.trimStart = function () {
+	  return this.replace(/^[\s\uFEFF\xA0]+/g, '');
+	};
+}
+if (!String.prototype.trimEnd) {
+	String.prototype.trimEnd = function () {
+	  return this.replace(/[\s\uFEFF\xA0]+$/g, '');
+	};
+}
+
 // --------------------------------------------------------------
 // Initial setup
 // --------------------------------------------------------------
@@ -14,7 +34,12 @@ var accumulatedExitCode = 0;
 
 var ws = WScript.CreateObject("WScript.Shell");
 var env = ws.Environment("Process");
-var comspec = ws.ExpandEnvironmentStrings("%comspec%");
+
+var oExec = ws.Exec("%ComSpec% /S /C \"chcp.com 65001\" > NUL: 2>&1");
+oExec.StdIn.Close();
+
+// FIX configure tricks
+var OPENCONNECT_TRICKS = env("OPENCONNECT_TRICKS");
 
 if (env("LOG2FILE")) {
 	var fs = WScript.CreateObject("Scripting.FileSystemObject");
@@ -32,7 +57,6 @@ if (env("REDIRECT_GATEWAY_METHOD")) {
 } else {
 	var REDIRECT_GATEWAY_METHOD = 0;
 }
-
 
 // --------------------------------------------------------------
 // Utilities
@@ -58,24 +82,35 @@ function echoMultiLine(msg)
 
 function exec(cmd)
 {
+	var mirror = true;
+	if (typeof arguments[1] != "undefined") mirror = arguments[1];
+
 	echo("<<-- [EXEC] " + cmd);
-	var oExec = ws.Exec(comspec + " /C \"" + cmd + "\" 2>&1");
+	var oExec = ws.Exec("%ComSpec% /S /C \"" + cmd + "\"");
 	oExec.StdIn.Close();
 
-	var s = oExec.StdOut.ReadAll();
-	echoMultiLine(s);
+	var s = oExec.StdOut.ReadAll().trim();
+	if (s.length) s += "\n";
+	var result = oExec.StdErr.ReadAll().trim();
+	if (result.length) {
+		result += "\n";
+		echoMultiLine("[STDERR] " + result);
+	}
+	result += s;
+
+	if (mirror || vDebug) echoMultiLine(s);
 
 	var status = oExec.Status;
 	var exitCode = oExec.ExitCode;
 	echo("-->> (exitCode: " + exitCode + ")");
 	accumulatedExitCode += exitCode;
 
-	return s;
+	return result;
 }
 
 function getDefaultGateway()
 {
-	if (exec("route print").match(/0\.0\.0\.0 *(0|128)\.0\.0\.0 *([0-9\.]*)/)) {
+	if (exec("route print", vDebug).match(/0\.0\.0\.0 *(0|128)\.0\.0\.0 *([0-9\.]*)/)) {
 		return (RegExp.$2);
 	}
 	return ("");
@@ -84,15 +119,21 @@ function getDefaultGateway()
 function waitForInterface() {
 	var if_route = new RegExp(env("INTERNAL_IP4_ADDRESS") + " *255.255.255.255");
 	for (var i = 0; i < 5; i++) {
-		echo("Waiting for interface to come up...");
-		WScript.Sleep(2000);
-		if (exec("route print").match(if_route)) {
+		if (exec("route print", vDebug).match(if_route)) {
 			return true;
 		}
+		echo("Waiting for interface to come up...");
+		WScript.Sleep(2000);
 	}
 	return false;
 }
 
+function trick(trickName) {
+	var re = new RegExp("\\b" + trickName + "(?::(\\S+))?\\b");
+	var trick = OPENCONNECT_TRICKS.match(re);
+
+	return trick;
+}
 
 // --------------------------------------------------------------
 // Script starts here
@@ -113,7 +154,7 @@ case "connect":
 	);
 	var internal_gw = internal_gw_array.join(".");
 
-	echo("Default Gateway:" + gw)
+	echo("Default Gateway: " + gw)
 	echo("VPN Gateway: " + env("VPNGATEWAY"));
 	echo("Internal Address: " + env("INTERNAL_IP4_ADDRESS"));
 	echo("Internal Netmask: " + env("INTERNAL_IP4_NETMASK"));
@@ -121,7 +162,9 @@ case "connect":
 	echo("Interface idx: " + env("TUNIDX") + " (\"" + env("TUNDEV") + "\")");
 
 	// Add direct route for the VPN gateway to avoid routing loops
-	exec("route add " + env("VPNGATEWAY") + " mask 255.255.255.255 " + gw);
+	if (gw.length) {
+		exec("route add " + env("VPNGATEWAY") + "/32 " + gw);
+	}
 
 	if (env("INTERNAL_IP4_MTU")) {
 		echo("MTU: " + env("INTERNAL_IP4_MTU"));
@@ -135,34 +178,38 @@ case "connect":
 
 	if (!env("CISCO_SPLIT_INC") && REDIRECT_GATEWAY_METHOD != 2) {
 		// Interface metric must be set to 1 in order to add a route with metric 1 since Windows Vista
-		exec("netsh interface ip set interface " + env("TUNIDX") + " metric=1");
+		exec("netsh interface ipv4 set interface " + env("TUNIDX") + " metric=1");
 	}
 
 	if (env("CISCO_SPLIT_INC") || REDIRECT_GATEWAY_METHOD != 0) {
-		exec("netsh interface ip set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK"));
+		exec("netsh interface ipv4 set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK"));
 	} else {
 		// The default route will be added automatically
-		exec("netsh interface ip set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK") + " " + internal_gw + " 1");
+		exec("netsh interface ipv4 set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK") + " " + internal_gw + " 1");
 	}
 
 	if (env("INTERNAL_IP4_NBNS")) {
 		var wins = env("INTERNAL_IP4_NBNS").split(/ /);
 		for (var i = 0; i < wins.length; i++) {
-			exec("netsh interface ip add wins " + env("TUNIDX") + " " + wins[i] + " index=" + (i+1));
+			exec("netsh interface ipv4 add wins " + env("TUNIDX") + " " + wins[i] + " index=" + (i+1));
 		}
 	}
 
 	if (env("INTERNAL_IP4_DNS")) {
 		var dns = env("INTERNAL_IP4_DNS").split(/ /);
 		for (var i = 0; i < dns.length; i++) {
-			exec("netsh interface ip add dns " + env("TUNIDX") + " " + dns[i] + " index=" + (i+1));
+			exec("netsh interface ipv4 add dns " + env("TUNIDX") + " " + dns[i] + " index=" + (i+1));
 		}
 	}
-	echo("done.");
 
-	// FIX DNS override
-	echo("Overriding tunnel DNS servers...");
-	exec("netsh interface ipv4 set dnsserver " + env("TUNIDX") + " static 192.168.56.1");
+	// FIX:tricks:dns DNS server override
+	var tricks = trick("dns");
+	if(tricks && tricks[1].length) {
+		echo("Overriding tunnel DNS servers...");
+		exec("netsh interface ipv4 set dnsserver " + env("TUNIDX") + " static " + tricks[1]);
+	}
+
+	echo("done.");
 
 	// Add internal network routes
 	echo("Configuring Legacy IP networks:");
@@ -176,15 +223,18 @@ case "connect":
 			var network = env("CISCO_SPLIT_INC_" + i + "_ADDR");
 			var netmask = env("CISCO_SPLIT_INC_" + i + "_MASK");
 			var netmasklen = env("CISCO_SPLIT_INC_" + i + "_MASKLEN");
-			// FIX Prevent blind private networks rerouting
+			// FIX:tricks:noblind Prevent blind private networks rerouting
 			if (
-				network == '10.0.0.0' && netmask == '255.0.0.0'
-				|| network == '172.16.0.0' && netmask == '255.240.0.0'
-				|| network == '192.168.0.0' && netmask == '255.255.0.0'
+				trick("noblind") && (
+					network == '10.0.0.0' && netmask == '255.0.0.0'
+					|| network == '172.16.0.0' && netmask == '255.240.0.0'
+					|| network == '192.168.0.0' && netmask == '255.255.0.0'
+				)
 			) {
+				echo("Skipped rerouting of a whole private address block " + network + "/" + netmasklen);
 				continue;
 			}
-			exec("route add " + network + " mask " + netmask + " " + internal_gw);
+			exec("netsh interface ipv4 add route " + network + "/" + netmasklen + " " + env("TUNIDX"));
 		}
 	} else if (REDIRECT_GATEWAY_METHOD > 0) {
 		// Waiting for the interface to be configured before to add routes
@@ -231,8 +281,12 @@ case "connect":
 		echo("------------------- BANNER end -------------------");
 	}
 
-	// FIX Spawn OpenVPN connection
-	exec("\"C:/Program Files/OpenVPN/bin/openvpn-gui.exe\" --command connect '<default>'");
+	// FIX:tricks:openvpn Spawn OpenVPN connection
+	if (trick("openvpn") && trick("openvpn")[1].length) {
+		echo("[workaround] Telling OpenVPN it can connect now...")
+		exec("\"C:/Program Files/OpenVPN/bin/openvpn-gui.exe\" --command connect " + trick("openvpn")[1]);
+	}
+
 	break;
 case "disconnect":
 	var gw = getDefaultGateway();
@@ -251,8 +305,8 @@ case "disconnect":
 
 	// ReSet Tunnel Adapter IP = nothing
 	echo("Resetting Tunnel Adapter IP");
-	exec("netsh interface ip set address " + env("TUNIDX") + " source=static 1.0.0.0 255.255.255.255");
-	exec("netsh interface ip delete address " + env("TUNIDX") + " 1.0.0.0");
+	exec("netsh interface ipv4 set address " + env("TUNIDX") + " source=static 1.0.0.0 255.255.255.255");
+	exec("netsh interface ipv4 delete address " + env("TUNIDX") + " 1.0.0.0");
 
 	// Take Down IPv4 Split Tunnel Server-side Network Routes
 	if (env("CISCO_SPLIT_INC")) {
@@ -260,6 +314,17 @@ case "disconnect":
 		for (var i = 0 ; i < parseInt(env("CISCO_SPLIT_INC")); i++) {
 			var network = env("CISCO_SPLIT_INC_" + i + "_ADDR");
 			var netmask = env("CISCO_SPLIT_INC_" + i + "_MASK");
+			var netmasklen = env("CISCO_SPLIT_INC_" + i + "_MASKLEN");
+			// FIX:tricks:noblind Prevent blind private networks rerouting
+			if (
+				trick("noblind") && (
+					network == '10.0.0.0' && netmask == '255.0.0.0'
+					|| network == '172.16.0.0' && netmask == '255.240.0.0'
+					|| network == '192.168.0.0' && netmask == '255.255.0.0'
+				)
+			) {
+				continue;
+			}
 			exec("route delete " + network);
 		}
 	}
