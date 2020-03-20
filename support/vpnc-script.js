@@ -128,6 +128,12 @@ function waitForInterface() {
 	return false;
 }
 
+function routeAdd(dest, gw) {
+	var metric = "";
+	if (typeof arguments[2] != "undefined") metric = " metric=" + arguments[2];
+	exec("netsh interface ipv4 add route " + dest + " interface=" + gw + " store=active" + metric)
+}
+
 function trick(trickName) {
 	var re = new RegExp("\\b" + trickName + "(?::(\\S+))?\\b");
 	var trick = OPENCONNECT_TRICKS.match(re);
@@ -181,6 +187,7 @@ case "connect":
 		exec("netsh interface ipv4 set interface " + env("TUNIDX") + " metric=1");
 	}
 
+	echo("Setting network address...");
 	if (env("CISCO_SPLIT_INC") || REDIRECT_GATEWAY_METHOD != 0) {
 		exec("netsh interface ipv4 set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK"));
 	} else {
@@ -188,31 +195,8 @@ case "connect":
 		exec("netsh interface ipv4 set address " + env("TUNIDX") + " static " + env("INTERNAL_IP4_ADDRESS") + " " + env("INTERNAL_IP4_NETMASK") + " " + internal_gw + " 1");
 	}
 
-	if (env("INTERNAL_IP4_NBNS")) {
-		var wins = env("INTERNAL_IP4_NBNS").split(/ /);
-		for (var i = 0; i < wins.length; i++) {
-			exec("netsh interface ipv4 add wins " + env("TUNIDX") + " " + wins[i] + " index=" + (i+1));
-		}
-	}
-
-	if (env("INTERNAL_IP4_DNS")) {
-		var dns = env("INTERNAL_IP4_DNS").split(/ /);
-		for (var i = 0; i < dns.length; i++) {
-			exec("netsh interface ipv4 add dns " + env("TUNIDX") + " " + dns[i] + " index=" + (i+1));
-		}
-	}
-
-	// FIX:tricks:dns DNS server override
-	var tricks = trick("dns");
-	if(tricks && tricks[1].length) {
-		echo("Overriding tunnel DNS servers...");
-		exec("netsh interface ipv4 set dnsserver " + env("TUNIDX") + " static " + tricks[1]);
-	}
-
-	echo("done.");
-
 	// Add internal network routes
-	echo("Configuring Legacy IP networks:");
+	echo("Setting up network routing...");
 	if (env("CISCO_SPLIT_INC")) {
 		// Waiting for the interface to be configured before to add routes
 		if (!waitForInterface()) {
@@ -249,7 +233,42 @@ case "connect":
 			exec("route add 128.0.0.0 mask 128.0.0.0 " + internal_gw);
 		}
 	}
-	echo("Route configuration done.");
+
+	// FIX:tricks:routes Additional routing rules to sort out the blind routing
+	if(trick("routes")) {
+		echo("Setting up routing additions...");
+		var routes = trick("routes")[1].split(/:/);
+		for (var i = 0; i < routes.length; i++) {
+			routeAdd(routes[i], env("TUNIDX"));
+		}
+	}
+
+	echo("Routing configuration done.");
+
+	if (env("INTERNAL_IP4_NBNS")) {
+		echo("Setting WINS server(s) address(es)...");
+		var wins = env("INTERNAL_IP4_NBNS").split(/ /);
+		for (var i = 0; i < wins.length; i++) {
+			exec("netsh interface ipv4 add wins " + env("TUNIDX") + " " + wins[i] + " index=" + (i+1));
+		}
+	}
+
+	if (env("INTERNAL_IP4_DNS")) {
+		echo("Setting DNS server(s) address(es)...");
+		var dns = env("INTERNAL_IP4_DNS").split(/ /);
+		for (var i = 0; i < dns.length; i++) {
+			exec("netsh interface ipv4 add dns " + env("TUNIDX") + " " + dns[i] + " validate=no index=" + (i+1));
+		}
+	}
+
+	// FIX:tricks:dns DNS server override
+	var tricks = trick("dns");
+	if(tricks && tricks[1].length) {
+		echo("Overriding tunnel DNS servers...");
+		exec("netsh interface ipv4 set dnsserver " + env("TUNIDX") + " static " + tricks[1]);
+	}
+
+	echo("Name resolution settings done...");
 
 	if (env("INTERNAL_IP6_ADDRESS")) {
 		echo("Configuring " + env("TUNIDX") + " interface for IPv6...");
@@ -274,6 +293,8 @@ case "connect":
 		}
 		echo("IPv6 route configuration done.");
 	}
+
+	echo("done.");
 
 	if (env("CISCO_BANNER")) {
 		echo("--------------------- BANNER ---------------------");
@@ -338,6 +359,17 @@ case "disconnect":
 			exec("route delete " + network);
 		}
 	}
+
+	// FIX:tricks:routes Additional routing rules cleanup
+	if(trick("routes")) {
+		echo("Cleaning up routing additions...");
+		var routes = trick("routes")[1].split(/:/);
+		for (var i = 0; i < routes.length; i++) {
+			exec("route delete " + routes[i]);
+		}
+	}
+
+	break;
 }
 
 if (env("LOG2FILE")) {
