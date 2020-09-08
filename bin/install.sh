@@ -8,6 +8,11 @@ set -e
 
 groupadd --system --force -- ssl-vpn
 
+install --verbose --mode=0755 --directory -- \
+    "$BASE/bin" \
+    "$BASE/hooks" \
+    "$BASE/sudoers"
+
 install --verbose -D --mode=0755 "--target-directory=$BASE/bin" -- \
     "$_SRC/bin/ssl-vpn" \
     "$_SRC/bin/ssl-vpn-connect" \
@@ -17,7 +22,7 @@ install --verbose -D --mode=0755 "--target-directory=$BASE/hooks" -- \
     "$_SRC/hooks/x5-routes.sh"
 
 install --verbose -D --mode=0644 "--target-directory=$BASE/hooks" -- \
-    "$_SRC/hooks/vpnc-script.2019-06-06" \
+    "$_SRC/hooks/vpnc-script.2020-02-21" \
     "$_SRC/hooks/README.hooks.md"
 
 install --verbose -D --mode=0644 "--target-directory=$BASE/sudoers" -- \
@@ -33,7 +38,7 @@ install --verbose --mode=0755 --directory -- \
     "$CONF/reconnect.d"
 
 install --verbose --mode=0755 "--no-target-directory" -- \
-    "$BASE/hooks/vpnc-script.2019-06-06" "$CONF/vpnc-script"
+    "$BASE/hooks/vpnc-script.2020-02-21" "$CONF/vpnc-script"
 
 visudo -qcf "$BASE/sudoers/ssl-vpn" && install --verbose "--no-target-directory" -- "$BASE/sudoers/ssl-vpn" "/etc/sudoers.d/ssl-vpn"
 
